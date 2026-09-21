@@ -19,7 +19,7 @@ macOS Apple Silicon 的压缩包在 `release/WorkCount-macOS-arm64.zip`，解压
 
 每台电脑须事先安装 Google Chrome，首次运行青果连接器可能需要访问网络获取匹配的浏览器驱动；还须能直接访问青果平台。启动入口仅监听本机的 `127.0.0.1:8765`，关闭服务窗口即停止服务。详见包内的“离线使用说明.txt”。
 
-本机重建 Mac 包：`bash tools/build_mac.sh`。Windows 和 Intel Mac 二进制由 `.github/workflows/build-portable.yml` 手动构建；工作流产物不含私有 Excel 模板，不是完整可用包。下载后应在本机加入 `templates/` 下的三个原文件再重新压缩，切勿公开发布完整包。
+本机重建 Apple Silicon 包：`bash tools/build_mac.sh`。Windows 和 Intel Mac 二进制由 `.github/workflows/build-portable.yml` 手动构建；工作流产物不含私有 Excel 模板，不是完整可用包。Windows 下载后运行 `python3 tools/assemble_ci_package.py 不含模板的ZIP Windows-x64`；Intel Mac 下载到 `release/ci-artifacts/macos-intel/` 后运行 `bash tools/assemble_mac_intel.sh`。完整包会在本机加入三个原模板，切勿公开发布。
 
 ## 使用
 
