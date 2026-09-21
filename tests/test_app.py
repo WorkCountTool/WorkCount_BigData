@@ -14,6 +14,10 @@ class CalculationTests(unittest.TestCase):
         with patch.dict("app.os.environ", {"WORKCOUNT_CONNECTOR_PYTHON": "/usr/local/bin/python"}):
             self.assertEqual(app.connector_python(), "/usr/local/bin/python")
 
+    def test_frozen_connector_is_next_to_server_bundle(self):
+        with patch.object(app.sys, "frozen", True, create=True), patch.object(app, "ROOT", Path("/tmp/workcount-portable")), patch.object(app.os, "name", "nt"):
+            self.assertEqual(app.connector_command(), ["/tmp/workcount-portable/PlatformConnector/PlatformConnector.exe"])
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))

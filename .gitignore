@@ -10,3 +10,7 @@ outputs/
 templates/*.xlsx
 *.xls
 .pytest_cache/
+build/
+dist/
+release/
+*.spec

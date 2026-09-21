@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from xml.etree import ElementTree as ET
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(sys.executable).resolve().parent.parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 DATA = ROOT / "data"
 DB_PATH = Path(os.getenv("WORKCOUNT_DB", DATA / "workcount.db"))
@@ -54,6 +54,13 @@ def connector_python() -> str:
         return configured
     local = ROOT / ".venv" / "bin" / "python"
     return str(local if local.exists() else sys.executable)
+
+
+def connector_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        name = "PlatformConnector.exe" if os.name == "nt" else "PlatformConnector"
+        return [str(ROOT / "PlatformConnector" / name)]
+    return [connector_python(), str(ROOT / "tools" / "platform_sync.py")]
 
 
 def session_cookie(token: str, max_age: int) -> str:
@@ -366,11 +373,11 @@ def sync_from_platform(payload: dict, persist: bool = False, progress_callback=N
     requested_name = str(payload.get("employee_name") or "").strip()
     if not username or not password:
         raise AppError("请输入平台账号和密码", "PLATFORM_CREDENTIALS_REQUIRED", 422)
-    python = connector_python()
+    command = connector_command()
     request = json.dumps({"username": username, "password": password, "employee_id": requested_id, "employee_name": requested_name, "semester": str(payload.get("semester") or "")}, ensure_ascii=False) + "\n"
     try:
         proc = subprocess.Popen(
-            [python, str(ROOT / "tools" / "platform_sync.py")],
+            command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, cwd=ROOT,
             env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
@@ -441,11 +448,11 @@ def authenticate_platform(payload: dict) -> dict:
     password = str(payload.get("password") or "")
     if not username or not password:
         raise AppError("请输入平台账号和密码", "PLATFORM_CREDENTIALS_REQUIRED", 422)
-    python = connector_python()
+    command = connector_command()
     request = json.dumps({"username": username, "password": password, "employee_id": username, "mode": "auth"}, ensure_ascii=False) + "\n"
     try:
         proc = subprocess.run(
-            [python, str(ROOT / "tools" / "platform_sync.py")],
+            command,
             input=request, text=True, capture_output=True, cwd=ROOT, timeout=60,
             env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
         )
@@ -467,11 +474,11 @@ def authenticate_platform(payload: dict) -> dict:
 def platform_catalog(payload: dict, progress_callback=None) -> dict:
     """Read only the teacher identity and available semesters."""
     username = str(payload.get("username") or "").strip(); password = str(payload.get("password") or "")
-    python = connector_python()
+    command = connector_command()
     request = json.dumps({"username": username, "password": password, "employee_id": username, "mode": "catalog"}, ensure_ascii=False) + "\n"
     try:
         proc = subprocess.Popen(
-            [python, str(ROOT / "tools" / "platform_sync.py")],
+            command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT,
             env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
         )
