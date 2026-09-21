@@ -1,0 +1,4 @@
+{$WORKCOUNT_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy workcount:8765
+}

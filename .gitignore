@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+.env
+.env.*
+!.env.example
+data/
+outputs/
+templates/*.xlsx
+*.xls
+.pytest_cache/

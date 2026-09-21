@@ -1,0 +1,20 @@
+services:
+  workcount:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./templates:/app/templates:ro
+      - workcount_data:/app/data
+    shm_size: "512mb"
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/ready', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+volumes:
+  workcount_data:

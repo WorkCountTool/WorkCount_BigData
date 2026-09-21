@@ -1,0 +1,21 @@
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      WORKCOUNT_DOMAIN: ${WORKCOUNT_DOMAIN:?Set WORKCOUNT_DOMAIN to your DNS name}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      workcount:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

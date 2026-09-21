@@ -1,0 +1,64 @@
+.login-screen[hidden],
+.app-shell[hidden] {
+  display: none !important;
+}
+
+#addButton[hidden] { display: none !important; }
+
+.sync-progress { margin-bottom: 20px; padding: 18px 20px; background: #fff; border: 1px solid var(--line); }
+.sync-progress[hidden] { display: none !important; }
+.sync-progress-head { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+.sync-progress-head strong,.sync-progress-head span { display: block; }
+.sync-progress-head strong { font-size: 13px; }
+.sync-progress-head span,.sync-progress small { margin-top: 5px; color: var(--muted); font-size: 11px; }
+.sync-progress-head b { color: var(--green); font-size: 18px; font-variant-numeric: tabular-nums; }
+.sync-progress-track { height: 8px; margin: 14px 0 8px; overflow: hidden; background: #e6ebe8; border-radius: 999px; }
+.sync-progress-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; transition: width .4s ease; }
+.button.disabled { pointer-events: none; opacity: .45; }
+
+.platform-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.platform-form button { grid-column: 1 / -1; }
+.connector-state.ready > span { background: var(--green); }
+
+.login-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #17201d 0 48%, #e8efeb 48% 100%);
+}
+
+.login-card {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 22px;
+  padding: 34px;
+  background: #fff;
+  border: 1px solid #dfe5e2;
+  box-shadow: 0 28px 80px #17201d44;
+}
+
+.login-brand { color: #17201d; border-bottom-color: #dfe5e2; padding: 0 0 22px; }
+.login-brand small { color: #68736f; }
+.login-card h1 { margin: 0 0 9px; font-size: 28px; }
+.login-card p:not(.eyebrow) { margin: 0; color: #68736f; font-size: 12px; line-height: 1.7; }
+.login-status { min-height: 18px; color: #68736f; font-size: 11px; }
+.login-status.error { color: #a64036; }
+.login-progress { padding: 12px 14px; border: 1px solid #dfe7e3; background: #f7faf8; }
+.login-progress[hidden] { display: none !important; }
+.login-progress > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #52605a; font-size: 11px; }
+.login-progress b { color: var(--green); font-size: 12px; font-variant-numeric: tabular-nums; }
+.login-progress-track { height: 6px; margin-top: 9px; overflow: hidden; background: #dfe7e3; border-radius: 999px; }
+.login-progress-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; transition: width .35s ease; }
+.logout-button { margin-left: auto; border: 0; background: transparent; color: #d6e5de; font: 11px inherit; cursor: pointer; }
+
+@media (max-width: 600px) {
+  .platform-form { grid-template-columns: 1fr; }
+}

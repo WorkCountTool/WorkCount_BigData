@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="教师教学工作量自动核算系统">
+  <title>教学工作量核算台</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/teacher.css">
+  <link rel="stylesheet" href="/platform.css?v=20260921-2">
+</head>
+<body>
+  <section class="login-screen" id="loginScreen">
+    <form class="login-card" id="loginForm">
+      <div class="brand login-brand"><span class="brand-mark">W</span><div><strong>工作量核算台</strong><small>SUET · TEACHING OPS</small></div></div>
+      <div><p class="eyebrow">PLATFORM SIGN IN</p><h1>使用青果账号登录</h1><p>登录后先读取本人可用学期，再按所选学期获取教学任务、实践环节和个人课时。密码仅用于本次平台认证，不保存。</p></div>
+      <label><span>工号 / 平台账号</span><input name="username" autocomplete="username" required autofocus></label>
+      <label><span>平台密码</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="button primary" id="loginButton" type="submit">登录并选择学期</button>
+      <div class="login-progress" id="loginProgress" hidden aria-live="polite">
+        <div><span id="loginProgressMessage">正在启动登录任务</span><b id="loginProgressPercent">2%</b></div>
+        <div class="login-progress-track"><i id="loginProgressBar" style="width:2%"></i></div>
+      </div>
+      <div class="login-status" id="loginStatus">登录时只读取账号和学期列表；进入系统后按选择的具体学期实时获取数据。</div>
+    </form>
+  </section>
+  <div class="app-shell" id="appShell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">W</span><div><strong>工作量核算台</strong><small>TEACHING OPS</small></div></div>
+      <nav aria-label="主导航">
+        <button class="nav-item active" data-view="overview"><span>总览</span><small>01</small></button>
+        <button class="nav-item" data-view="records"><span>明细记录</span><small>02</small></button>
+        <button class="nav-item" data-view="rules"><span>核算规则</span><small>03</small></button>
+        <button class="nav-item" data-view="sync"><span>数据同步</span><small>04</small></button>
+      </nav>
+      <div class="sidebar-foot"><span class="status-dot"></span><span>本地数据库已连接</span><button id="logoutButton" class="logout-button">退出</button></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow" id="activeSemester">当前选择学期</p><h1 id="pageTitle">工作量总览</h1></div>
+        <div class="toolbar"><a class="button secondary" id="budgetExportButton" href="/api/export-budget.xlsx">生成工作量预算</a><a class="button secondary" id="personalExportButton" href="/api/export-personal-hours.xlsx">生成个人学时</a><a class="button secondary" id="exportButton" href="/api/export.xlsx">生成决算工作量</a><button class="button primary" id="addButton" hidden>新增记录</button></div>
+      </header>
+
+      <section class="teacher-query" aria-label="教师查询"><div><label for="semester">学期</label><select id="semester"><option value="2025-2026-2">正在读取学期…</option></select></div><div><label for="employeeId">工号 / 学号</label><input id="employeeId" autocomplete="off" placeholder="请输入工号"></div><div><label for="employeeName">姓名</label><input id="employeeName" autocomplete="off" placeholder="请输入姓名"></div><button class="button primary" id="teacherSearch">查询并计算</button><button class="text-button" id="clearTeacher">查看全部</button><span id="activeTeacher">当前显示全部教师</span></section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <section class="sync-progress" id="syncProgress" hidden aria-live="polite">
+        <div class="sync-progress-head"><div><strong>正在从青果实时更新数据</strong><span id="syncProgressMessage">准备读取平台数据</span></div><b id="syncProgressPercent">5%</b></div>
+        <div class="sync-progress-track"><i id="syncProgressBar" style="width:5%"></i></div>
+        <small>可以停留在系统内查看进度；完成后工作量和个人学时会自动刷新。</small>
+      </section>
+      <section id="loading" class="loading-grid" aria-label="正在加载"><div></div><div></div><div></div><div></div></section>
+
+      <section class="view" id="overviewView" data-view="overview" hidden>
+        <div class="kpis">
+          <article class="kpi strong"><span>总工作量</span><strong id="totalWorkload">--</strong><small>理论 + 实践</small></article>
+          <article class="kpi"><span>总学时</span><strong id="totalHours">--</strong><small>申报教学学时</small></article>
+          <article class="kpi"><span>理论工作量</span><strong id="theoryWorkload">--</strong><small id="theoryHours">-- 学时</small></article>
+          <article class="kpi"><span>实践工作量</span><strong id="practiceWorkload">--</strong><small id="practiceHours">-- 学时</small></article>
+        </div>
+        <div class="overview-grid">
+          <section class="panel chart-panel"><div class="panel-head"><div><p class="eyebrow">结构分析</p><h2>理论与实践构成</h2></div><span id="recordCount" class="muted"></span></div><div class="composition"><div class="donut" id="donut"><div><strong id="donutPercent">--</strong><span>理论占比</span></div></div><div class="legend"><div><i class="theory"></i><span>理论工作量</span><strong id="legendTheory">--</strong></div><div><i class="practice"></i><span>实践工作量</span><strong id="legendPractice">--</strong></div></div></div></section>
+          <section class="panel"><div class="panel-head"><div><p class="eyebrow">重点课程</p><h2>工作量排名</h2></div><button class="text-button" data-goto="records">查看全部</button></div><div id="ranking" class="ranking"></div></section>
+        </div>
+        <section class="panel recent"><div class="panel-head"><div><p class="eyebrow">核算明细</p><h2>最近记录</h2></div><span class="verified">公式已复核</span></div><div class="table-wrap"><table><thead><tr><th>课程 / 项目</th><th>班级</th><th>类型</th><th class="num">学时</th><th class="num">工作量</th></tr></thead><tbody id="recentBody"></tbody></table></div></section>
+      </section>
+
+      <section class="view" id="recordsView" data-view="records" hidden>
+        <div class="filters"><div class="segmented" id="kindFilter"><button class="active" data-kind="all">全部</button><button data-kind="theory">理论</button><button data-kind="practice">实践</button></div><input id="searchInput" type="search" placeholder="搜索课程、班级或代码" aria-label="搜索记录"></div>
+        <section class="panel"><div class="table-wrap"><table class="records-table"><thead><tr><th>课程 / 项目</th><th>班级</th><th>类型</th><th class="num">学生数</th><th class="num">学时</th><th class="num">工作量</th><th>计算依据</th></tr></thead><tbody id="recordsBody"></tbody></table><div id="emptyState" class="empty" hidden><strong>没有匹配的记录</strong><span>当前学期青果平台未返回工作量记录。</span></div></div></section>
+      </section>
+
+      <section class="view" id="rulesView" data-view="rules" hidden>
+        <div class="rules-layout">
+          <section><p class="eyebrow">RULE ENGINE</p><h2 class="section-title">当前核算公式</h2><p class="section-copy">规则根据你的决算表和填写说明还原，所有中间结果保留 4 位小数。</p></section>
+          <div class="rule-list">
+            <article><span>01</span><div><h3>理论部分</h3><p>理论学时 × 重复系数 × 规模系数 × 课程系数 × 类别系数 × 在线系数</p></div></article>
+            <article><span>02</span><div><h3>课内实验</h3><p>计算学生数 × 实验学时 × 类别系数 × 重复系数 × 0.02 × 课程系数</p></div></article>
+            <article><span>03</span><div><h3>规模系数</h3><p>50 人以下按 50 人，75 人以上按 75 人；50-75 人每增加 1 人增加 0.01。</p></div></article>
+            <article><span>04</span><div><h3>集中实训</h3><p>实训系数 × 学生数 × 周数 × 校企系数 ÷ 指导教师人数</p></div></article>
+            <article><span>05</span><div><h3>毕业设计与答辩</h3><p>本科毕业设计按系数 × 人数；专科综合实训计入周数；答辩按学生数 ÷ 教师数。</p></div></article>
+            <article><span>06</span><div><h3>社会实践</h3><p>学生人数 × 实际学时 × 0.02，毕业教育与劳动教育使用同一规则。</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="syncView" data-view="sync" hidden>
+        <div class="sync-grid">
+          <section><p class="eyebrow">KINGOSOFT CONNECTOR</p><h2 class="section-title">从青果平台实时计算</h2><p class="section-copy">同步已发布的承担理论课程、教学安排和指导实践环节。登录只在本机临时浏览器会话中使用，账号密码不会写入数据库。</p></section>
+          <section class="panel diagnostic">
+            <form id="platformForm" class="platform-form"><button class="button primary" id="platformSync" type="submit">重新读取当前选择学期</button></form>
+            <div class="diagnostic-row"><span>数据来源</span><strong>qgjw.suet.edu.cn 实时响应</strong></div>
+            <div class="diagnostic-row"><span>同步范围</span><strong>理论课程 · 课表 · 实践环节</strong></div>
+            <div class="diagnostic-row"><span>读取方式</span><strong>按所选学期实时读取</strong></div>
+            <div class="connector-state ready"><span></span><div><strong>连接器已就绪</strong><p id="platformState">请输入平台账号密码后同步；通常需要 1—3 分钟。</p></div></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="itemDialog">
+    <form id="itemForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">WORKLOAD ITEM</p><h2 id="dialogTitle">新增记录</h2></div><button type="button" class="icon-button" id="closeDialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <label><span>工号 / 学号</span><input name="employee_id" required></label>
+        <label><span>教师姓名</span><input name="employee_name" required></label>
+        <label><span>所属学期</span><input name="semester" required value="2025-2026-2"></label>
+        <label><span>类型</span><select name="kind" required><option value="theory">理论课程</option><option value="training">集中实训 / 认知实习</option><option value="internship">岗位实习</option><option value="thesis">毕业论文 / 设计</option><option value="defense">答辩</option><option value="social">社会实践</option><option value="manual">手工核定</option></select></label>
+        <label><span>课程 / 项目名称</span><input name="course" required></label>
+        <label><span>班级</span><input name="class_name"></label>
+        <label><span>课程代码</span><input name="course_code"></label>
+        <label><span>学生数</span><input name="student_count" type="number" min="0" step="any" value="0"></label>
+        <label><span>总学时</span><input name="total_hours" type="number" min="0" step="any" value="0"></label>
+      </div>
+      <fieldset id="theoryFields"><legend>理论课参数</legend><div class="form-grid compact"><label><span>课内实验学时</span><input name="experiment_hours" type="number" min="0" step="any" value="0"></label><label><span>实验计算学生数</span><input name="experiment_students" type="number" min="0" step="any" value="0"></label><label><span>类别系数</span><input name="category_coeff" type="number" min="0" step="any" value="1"></label><label><span>重复系数</span><input name="repeat_coeff" type="number" min="0" step="any" value="1"></label><label><span>课程系数</span><input name="course_coeff" type="number" min="0" step="any" value="1"></label><label><span>在线系数</span><input name="online_coeff" type="number" min="0" step="any" value="1"></label></div></fieldset>
+      <fieldset id="practiceFields" hidden><legend>实践课参数</legend><div class="form-grid compact"><label><span>实践系数</span><input name="practice_coeff" type="number" min="0" step="any" value="0.5"></label><label><span>周数</span><input name="weeks" type="number" min="0" step="any" value="1"></label><label><span>指导教师数</span><input name="instructors" type="number" min="1" step="any" value="1"></label><label><span>校企系数</span><input name="enterprise_coeff" type="number" min="0" step="any" value="1"></label><label><span>手工工作量</span><input name="manual_workload" type="number" min="0" step="any" value="0"></label></div></fieldset>
+      <div class="dialog-actions"><button type="button" class="button secondary" id="cancelDialog">取消</button><button type="submit" class="button primary">保存并计算</button></div>
+    </form>
+  </dialog>
+  <script src="/app.js?v=20260921-7" defer></script>
+</body>
+</html>

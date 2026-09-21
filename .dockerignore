@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+.env.*
+data
+outputs
+templates
+__pycache__
+*.pyc
+*.xls
+*.xlsx
