@@ -13,6 +13,7 @@ import secrets
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -61,6 +62,31 @@ def connector_command() -> list[str]:
         name = "PlatformConnector.exe" if os.name == "nt" else "PlatformConnector"
         return [str(ROOT / "PlatformConnector" / name)]
     return [connector_python(), str(ROOT / "tools" / "platform_sync.py")]
+
+
+def connector_environment() -> dict[str, str]:
+    """Use a writable native temp directory and a fixed pipe encoding on every OS."""
+    return {
+        **os.environ,
+        "PYTHONPYCACHEPREFIX": str(Path(tempfile.gettempdir()) / "workcount-platform-pycache"),
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUTF8": "1",
+    }
+
+
+def connector_result(stdout: str, stderr: str, returncode: int, fallback: str) -> dict:
+    """Decode the connector's final JSON response while preserving a useful error."""
+    try:
+        lines = (stdout or "").strip().splitlines()
+        if not lines:
+            raise ValueError("connector produced no JSON")
+        result = json.loads(lines[-1])
+    except (json.JSONDecodeError, IndexError, ValueError) as exc:
+        detail = next((line.strip() for line in reversed((stderr or "").splitlines()) if line.strip()), "")
+        LOG.error("platform connector failed without JSON: returncode=%s stderr=%s", returncode, (stderr or "")[-1000:])
+        message = f"{fallback}：{detail[:300]}" if detail else fallback
+        raise AppError(message, "PLATFORM_RESPONSE_INVALID", 502) from exc
+    return result
 
 
 def session_cookie(token: str, max_age: int) -> str:
@@ -379,8 +405,8 @@ def sync_from_platform(payload: dict, persist: bool = False, progress_callback=N
         proc = subprocess.Popen(
             command,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, cwd=ROOT,
-            env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
+            text=True, encoding="utf-8", errors="replace", cwd=ROOT,
+            env=connector_environment(),
         )
         proc.stdin.write(request); proc.stdin.close()
         stderr_lines = []
@@ -405,11 +431,7 @@ def sync_from_platform(payload: dict, persist: bool = False, progress_callback=N
     finally:
         password = ""
         request = ""
-    try:
-        result = json.loads((stdout or "{}").strip().splitlines()[-1])
-    except (json.JSONDecodeError, IndexError) as exc:
-        LOG.error("platform connector failed without JSON: returncode=%s stderr=%s", proc.returncode, stderr[-1000:])
-        raise AppError("平台返回内容无法识别", "PLATFORM_RESPONSE_INVALID", 502) from exc
+    result = connector_result(stdout, stderr, proc.returncode, "平台连接器未能正常启动")
     if proc.returncode or result.get("error"):
         raise AppError(result.get("error") or "平台同步失败", "PLATFORM_SYNC_FAILED", 502)
     actual_id = str(result.get("employee_id") or "").strip()
@@ -453,19 +475,15 @@ def authenticate_platform(payload: dict) -> dict:
     try:
         proc = subprocess.run(
             command,
-            input=request, text=True, capture_output=True, cwd=ROOT, timeout=60,
-            env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
+            input=request, text=True, encoding="utf-8", errors="replace", capture_output=True, cwd=ROOT, timeout=60,
+            env=connector_environment(),
         )
     except subprocess.TimeoutExpired as exc:
         raise AppError("平台登录响应超时，请稍后重试", "PLATFORM_TIMEOUT", 504) from exc
     finally:
         password = ""
         request = ""
-    try:
-        result = json.loads((proc.stdout or "{}").strip().splitlines()[-1])
-    except (json.JSONDecodeError, IndexError) as exc:
-        LOG.error("platform authentication failed without JSON: returncode=%s stderr=%s", proc.returncode, (proc.stderr or "")[-1000:])
-        raise AppError("平台登录返回内容无法识别", "PLATFORM_RESPONSE_INVALID", 502) from exc
+    result = connector_result(proc.stdout, proc.stderr, proc.returncode, "平台登录组件未能正常启动")
     if proc.returncode or result.get("error") or not result.get("authenticated"):
         raise AppError(result.get("error") or "平台账号验证失败", "PLATFORM_LOGIN_FAILED", 401)
     return result
@@ -479,8 +497,9 @@ def platform_catalog(payload: dict, progress_callback=None) -> dict:
     try:
         proc = subprocess.Popen(
             command,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=ROOT,
-            env={**os.environ, "PYTHONPYCACHEPREFIX": "/tmp/workcount-platform-pycache"},
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", cwd=ROOT,
+            env=connector_environment(),
         )
         proc.stdin.write(request); proc.stdin.close()
         stdout_lines=[]; stderr_lines=[]
@@ -503,11 +522,7 @@ def platform_catalog(payload: dict, progress_callback=None) -> dict:
         raise AppError("平台登录响应超时，请稍后重试", "PLATFORM_TIMEOUT", 504) from exc
     finally:
         password=""; request=""
-    try:
-        result = json.loads((stdout or "{}").strip().splitlines()[-1])
-    except (json.JSONDecodeError, IndexError) as exc:
-        LOG.error("platform catalog failed without JSON: returncode=%s stderr=%s", proc.returncode, stderr[-1000:])
-        raise AppError("平台学期列表无法识别", "PLATFORM_RESPONSE_INVALID", 502) from exc
+    result = connector_result(stdout, stderr, proc.returncode, "平台登录组件未能正常启动")
     if proc.returncode or result.get("error"):
         raise AppError(result.get("error") or "平台登录失败", "PLATFORM_LOGIN_FAILED", 401)
     if not result.get("semesters"):

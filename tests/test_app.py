@@ -18,6 +18,16 @@ class CalculationTests(unittest.TestCase):
         with patch.object(app.sys, "frozen", True, create=True), patch.object(app, "ROOT", Path("/tmp/workcount-portable")), patch.object(app.os, "name", "nt"):
             self.assertEqual(app.connector_command(), ["/tmp/workcount-portable/PlatformConnector/PlatformConnector.exe"])
 
+    def test_connector_environment_uses_native_temp_and_utf8(self):
+        environment = app.connector_environment()
+        self.assertEqual(environment["PYTHONIOENCODING"], "utf-8")
+        self.assertEqual(environment["PYTHONUTF8"], "1")
+        self.assertTrue(environment["PYTHONPYCACHEPREFIX"].startswith(tempfile.gettempdir()))
+
+    def test_connector_result_preserves_startup_error(self):
+        with self.assertRaisesRegex(app.AppError, "chromedriver failed"):
+            app.connector_result("", "chromedriver failed", 1, "平台登录组件未能正常启动")
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))

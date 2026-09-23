@@ -25,6 +25,20 @@ except ModuleNotFoundError:  # Parsing and workbook tests do not need a browser.
 
 BASE = "https://qgjw.suet.edu.cn"
 
+
+def configure_stdio():
+    """Keep the frozen Windows connector and its parent process on UTF-8 pipes."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure=getattr(stream,"reconfigure",None)
+        if reconfigure:
+            reconfigure(encoding="utf-8",errors="replace")
+
+
+def chrome_start_error(exc):
+    detail=re.sub(r"\s+"," ",str(exc)).strip()
+    hint="无法启动 Chrome 登录组件。请确认已安装 Google Chrome；首次运行还需联网获取与 Chrome 匹配的驱动"
+    return RuntimeError(f"{hint}。{detail[:400]}" if detail else hint)
+
 # Teaching week 1 is shared by every teacher. Keep confirmed school-calendar
 # dates here instead of guessing from the first Monday in March/September.
 TERM_STARTS = {
@@ -334,6 +348,7 @@ def extend_unique_practice(items, additions):
 
 
 def main():
+    configure_stdio()
     if webdriver is None:
         raise RuntimeError("缺少 Selenium，无法启动青果平台读取组件")
     request=json.loads(sys.stdin.readline()); username=str(request.get("username","")).strip(); password=str(request.get("password", ""))
@@ -348,7 +363,11 @@ def main():
     options.add_experimental_option("prefs",{"profile.managed_default_content_settings.images":2})
     for arg in ("--headless=new","--ignore-certificate-errors","--window-size=1440,1000","--disable-gpu","--no-sandbox"): options.add_argument(arg)
     if mode == "catalog": progress(5,"正在启动青果登录组件")
-    driver=webdriver.Chrome(options=options); items=[]; monthly_rows=[]; schedule_events=[]
+    try:
+        driver=webdriver.Chrome(options=options)
+    except Exception as exc:
+        raise chrome_start_error(exc) from exc
+    items=[]; monthly_rows=[]; schedule_events=[]
     try:
         if mode == "catalog": progress(20,"正在验证青果账号")
         login(driver,username,password); password=""
