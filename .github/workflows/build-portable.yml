@@ -39,6 +39,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'Connector unexpectedly accepted empty credentials' }
           $connectorJson = $connectorResult | ConvertFrom-Json
           if ($connectorJson.error -notmatch '平台账号和密码不能为空') { throw "Windows connector smoke test failed: $connectorResult" }
+          $global:LASTEXITCODE = 0
           $env:WORKCOUNT_DB = Join-Path $env:RUNNER_TEMP 'portable-smoke.db'
           $server = Start-Process -FilePath './release/WorkCount-Windows-x64/WorkCountServer/WorkCountServer.exe' -PassThru -NoNewWindow
           try {
