@@ -360,8 +360,25 @@ def login(driver, username, password):
     driver.find_element(By.ID,"username1").click(); driver.find_element(By.ID,"username").send_keys(username)
     driver.find_element(By.ID,"password1").click(); driver.find_element(By.ID,"password").send_keys(password)
     driver.find_element(By.ID,"login").click()
-    try: wait.until(lambda current: "/cas/" not in current.current_url)
-    except Exception: raise RuntimeError("平台登录失败，请检查账号、密码或验证码")
+    def finished(current):
+        if "/cas/" not in current.current_url:
+            return True
+        try:
+            message = re.sub(r"\s+", " ", current.find_element(By.ID, "msg").text).strip()
+            return bool(message and "正在登录" not in message)
+        except Exception:
+            return False
+    try:
+        wait.until(finished)
+    except Exception as exc:
+        raise RuntimeError("青果登录响应超时，请稍后重试") from exc
+    if "/cas/" in driver.current_url:
+        message = ""
+        try:
+            message = re.sub(r"\s+", " ", driver.find_element(By.ID, "msg").text).strip()
+        except Exception:
+            pass
+        raise RuntimeError(f"青果平台提示：{message}" if message else "青果平台未接受本次登录，请核对账号和密码")
 
 
 def restore_session(driver, cookies):
