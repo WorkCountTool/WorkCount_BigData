@@ -99,6 +99,43 @@ class CalculationTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "青果平台提示：账号或密码有误"):
                 platform_sync.login(Driver(), "user", "bad-password")
 
+    def test_login_accepts_session_when_qingguo_redirect_is_slow(self):
+        class Element:
+            text = "正在登录......"
+
+            def click(self): pass
+            def send_keys(self, value): pass
+
+        class Driver:
+            current_url = platform_sync.BASE + "/cas/login.action"
+
+            def get(self, url):
+                self.current_url = url
+
+            def find_element(self, by, value):
+                return Element()
+
+        class Wait:
+            calls = 0
+
+            def __init__(self, driver, timeout): self.driver = driver
+            def until(self, predicate):
+                Wait.calls += 1
+                if Wait.calls == 2:
+                    raise platform_sync.TimeoutException("slow JavaScript redirect")
+                return predicate(self.driver)
+
+        class Conditions:
+            @staticmethod
+            def presence_of_element_located(locator): return lambda driver: True
+
+        class Locator:
+            ID = "id"
+
+        with patch.object(platform_sync, "WebDriverWait", Wait), patch.object(platform_sync, "EC", Conditions), patch.object(platform_sync, "By", Locator):
+            platform_sync.login(Driver(), "user", "password")
+        self.assertEqual(Wait.calls, 3)
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))

@@ -42,7 +42,7 @@ SESSIONS: dict[str, dict] = {}
 LOGIN_JOBS: dict[str, dict] = {}
 LOGIN_LOCK = threading.Lock()
 LOGIN_JOB_TTL = 10 * 60
-LOGIN_TIMEOUT = 105
+LOGIN_TIMEOUT = 150
 REQUIRED_TEMPLATES = (
     "个人学时统计表模板.xlsx",
     "决算工作量表模板.xlsx",

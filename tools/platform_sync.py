@@ -18,14 +18,21 @@ try:
     from selenium.webdriver.chrome.options import Options as ChromeOptions
     from selenium.webdriver.common.by import By
     from selenium.webdriver.edge.options import Options as EdgeOptions
+    from selenium.common.exceptions import TimeoutException
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.support.ui import Select
     from selenium.webdriver.support.ui import WebDriverWait
 except ModuleNotFoundError:  # Parsing and workbook tests do not need a browser.
     webdriver = ChromeOptions = EdgeOptions = By = EC = Select = WebDriverWait = None
 
+    class TimeoutException(Exception):
+        pass
+
 
 BASE = "https://qgjw.suet.edu.cn"
+LOGIN_FORM_TIMEOUT = 25
+LOGIN_RESPONSE_TIMEOUT = 45
+SESSION_PROBE_TIMEOUT = 15
 
 
 def configure_stdio():
@@ -96,7 +103,7 @@ def start_browser(progress_callback=None):
                 driver = webdriver.Edge(options=browser_options(EdgeOptions, binary))
             else:
                 driver = webdriver.Chrome(options=browser_options(ChromeOptions, binary))
-            driver.set_page_load_timeout(30)
+            driver.set_page_load_timeout(60)
             driver.set_script_timeout(30)
             return driver
         except Exception as exc:
@@ -355,7 +362,7 @@ def parse_note_items(notes, semester, employee_id, employee_name):
 
 def login(driver, username, password):
     driver.get(BASE+"/cas/login.action")
-    wait=WebDriverWait(driver,12)
+    wait=WebDriverWait(driver,LOGIN_FORM_TIMEOUT)
     wait.until(EC.presence_of_element_located((By.ID,"username")))
     driver.find_element(By.ID,"username1").click(); driver.find_element(By.ID,"username").send_keys(username)
     driver.find_element(By.ID,"password1").click(); driver.find_element(By.ID,"password").send_keys(password)
@@ -369,8 +376,20 @@ def login(driver, username, password):
         except Exception:
             return False
     try:
-        wait.until(finished)
-    except Exception as exc:
+        WebDriverWait(driver,LOGIN_RESPONSE_TIMEOUT).until(finished)
+    except TimeoutException as exc:
+        # Qingguo submits credentials with an asynchronous request. On a slow
+        # response the session can be established before its JavaScript redirect.
+        # Probe the protected home page once before reporting a timeout.
+        try:
+            driver.get(BASE+"/frame/homes.action")
+            authenticated=WebDriverWait(driver,SESSION_PROBE_TIMEOUT).until(
+                lambda current: "/cas/" not in current.current_url
+            )
+            if authenticated:
+                return
+        except Exception:
+            pass
         raise RuntimeError("青果登录响应超时，请稍后重试") from exc
     if "/cas/" in driver.current_url:
         message = ""
