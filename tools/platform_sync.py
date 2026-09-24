@@ -364,6 +364,32 @@ def login(driver, username, password):
     except Exception: raise RuntimeError("平台登录失败，请检查账号、密码或验证码")
 
 
+def restore_session(driver, cookies):
+    """Restore the authenticated Qingguo session without submitting credentials again."""
+    if not cookies:
+        return False
+    try:
+        driver.get(BASE + "/cas/login.action")
+        accepted = 0
+        allowed = {"name", "value", "path", "domain", "secure", "httpOnly", "expiry", "sameSite"}
+        for raw in cookies:
+            cookie = {key: value for key, value in raw.items() if key in allowed}
+            if not cookie.get("name") or "value" not in cookie:
+                continue
+            if cookie.get("sameSite") not in (None, "Strict", "Lax", "None"):
+                cookie.pop("sameSite", None)
+            try:
+                driver.add_cookie(cookie); accepted += 1
+            except Exception:
+                continue
+        if not accepted:
+            return False
+        driver.get(BASE + "/frame/homes.action")
+        return "/cas/" not in driver.current_url
+    except Exception:
+        return False
+
+
 def semester_options(driver, timeout=12):
     """Wait until the asynchronously populated semester selector has real values."""
     def read_options(current):
@@ -419,17 +445,19 @@ def main():
     # Keep Selenium Manager from making a failed driver lookup look like a hung login.
     os.environ.setdefault("SE_TIMEOUT", "20")
     os.environ.setdefault("SE_AVOID_STATS", "true")
-    request=json.loads(sys.stdin.readline()); username=str(request.get("username","")).strip(); password=str(request.get("password", ""))
+    request=json.loads(sys.stdin.readline()); username=str(request.get("username","")).strip(); password=str(request.get("password", "")); cookies=request.get("cookies") or []
     mode=str(request.get("mode") or "sync")
     requested_semester=str(request.get("semester") or "").strip()
     employee_id=str(request.get("employee_id") or username).strip(); employee_name=str(request.get("employee_name","")).strip()
-    if not username or not password: raise RuntimeError("平台账号和密码不能为空")
+    if not username or (not password and not cookies): raise RuntimeError("平台账号和密码不能为空")
     if mode == "catalog": progress(5,"正在启动青果登录组件")
     driver=start_browser(progress if mode == "catalog" else None)
     items=[]; monthly_rows=[]; schedule_events=[]
     try:
         if mode == "catalog": progress(20,"正在验证青果账号")
-        login(driver,username,password); password=""
+        if not restore_session(driver, cookies):
+            login(driver,username,password)
+        password=""
         home_id,home_name=parse_home_identity(driver.page_source)
         if home_id: employee_id=home_id
         if home_name: employee_name=home_name
@@ -440,7 +468,7 @@ def main():
         available_options=open_schedule_page(driver)
         if mode == "catalog":
             progress(95,f"已读取 {len(available_options)} 个可用学期")
-            print(json.dumps({"employee_id":employee_id,"employee_name":employee_name or employee_id,"college":"","semesters":[semester_key(*map(int,value.split(","))) for value,_ in available_options]},ensure_ascii=False))
+            print(json.dumps({"employee_id":employee_id,"employee_name":employee_name or employee_id,"college":"","semesters":[semester_key(*map(int,value.split(","))) for value,_ in available_options],"cookies":driver.get_cookies()},ensure_ascii=False))
             return
         semester_options=available_options
         if requested_semester:
@@ -515,7 +543,7 @@ def main():
                 monthly_rows.append({"semester":semester,"employee_id":employee_id,"employee_name":employee_name,"college":college,"department":"大数据教研室","month_key":key,"theory_hours":theory,"practice_hours":practice})
             extend_unique_practice(items,parse_note_items(notes,semester,employee_id,employee_name))
         progress(98,"正在整理工作量和个人学时数据")
-        print(json.dumps({"employee_id":employee_id,"employee_name":employee_name,"college":college,"items":items,"monthly_hours":monthly_rows,"schedule_events":schedule_events,"semesters":[semester_key(*x) for x in schedules]},ensure_ascii=False))
+        print(json.dumps({"employee_id":employee_id,"employee_name":employee_name,"college":college,"items":items,"monthly_hours":monthly_rows,"schedule_events":schedule_events,"semesters":[semester_key(*x) for x in schedules],"cookies":driver.get_cookies()},ensure_ascii=False))
     finally:
         password=""; driver.quit()
 

@@ -398,10 +398,10 @@ def sync_from_platform(payload: dict, persist: bool = False, progress_callback=N
     password = str(payload.get("password") or "")
     requested_id = str(payload.get("employee_id") or username).strip()
     requested_name = str(payload.get("employee_name") or "").strip()
-    if not username or not password:
+    if not username or (not password and not payload.get("cookies")):
         raise AppError("请输入平台账号和密码", "PLATFORM_CREDENTIALS_REQUIRED", 422)
     command = connector_command()
-    request = json.dumps({"username": username, "password": password, "employee_id": requested_id, "employee_name": requested_name, "semester": str(payload.get("semester") or "")}, ensure_ascii=False) + "\n"
+    request = json.dumps({"username": username, "password": password, "employee_id": requested_id, "employee_name": requested_name, "semester": str(payload.get("semester") or ""), "cookies": payload.get("cookies") or []}, ensure_ascii=False) + "\n"
     try:
         proc = subprocess.Popen(
             command,
@@ -462,7 +462,7 @@ def sync_from_platform(payload: dict, persist: bool = False, progress_callback=N
             for event in schedule_events:
                 conn.execute("""INSERT INTO schedule_events(semester,employee_id,employee_name,event_date,academic_week,weekday,course,class_name,student_count,periods,hours,category,source)
                     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""", (event["semester"], actual_id, actual_name, event["event_date"], int(event["academic_week"]), int(event["weekday"]), event["course"], event.get("class_name", ""), float(event.get("student_count", 0)), event["periods"], float(event.get("hours", 0)), event["category"], event.get("source", "platform")))
-    return {**public, "records": records, "monthly_data": monthly_rows, "event_data": schedule_events}
+    return {**public, "records": records, "monthly_data": monthly_rows, "event_data": schedule_events, "platform_cookies": result.get("cookies") or []}
 
 
 def authenticate_platform(payload: dict) -> dict:
@@ -562,6 +562,7 @@ def start_login_job(payload: dict) -> str:
                 "available_semesters": sorted(set(catalog.get("semesters", [])), reverse=True),
                 "loaded_semesters": set(), "syncing": False, "sync_percent": 0, "sync_message": "请选择学期读取数据",
                 "platform_username": payload["username"], "platform_password": payload["password"],
+                "platform_cookies": catalog.get("cookies") or [],
             }
             public = {"employee_id": actual_id, "employee_name": actual_name, "semesters": SESSIONS[token]["available_semesters"], "items": 0, "monthly_rows": 0, "schedule_events": 0, "syncing": False}
             update = {"status": "done", "percent": 100, "message": "登录成功，学期列表已就绪", "result": public, "session_token": token}
@@ -586,7 +587,7 @@ def start_semester_sync(session: dict, semester: str) -> None:
     if semester not in session.get("available_semesters", []):
         raise AppError("该学期不在当前账号的青果学期列表中", "SEMESTER_NOT_AVAILABLE", 404)
     session.update({"syncing": True, "sync_percent": 3, "sync_message": f"正在准备读取 {semester_text(semester)}", "sync_error": None, "sync_result": None, "sync_semester": semester})
-    payload = {"username": session["platform_username"], "password": session["platform_password"], "employee_id": session["employee_id"], "employee_name": "", "semester": semester}
+    payload = {"username": session["platform_username"], "password": session["platform_password"], "cookies": session.get("platform_cookies") or [], "employee_id": session["employee_id"], "employee_name": "", "semester": semester}
 
     def update_progress(percent: int, message: str) -> None:
         session["sync_percent"] = max(session.get("sync_percent", 0), min(99, percent)); session["sync_message"] = message
@@ -598,6 +599,8 @@ def start_semester_sync(session: dict, semester: str) -> None:
             session["monthly_data"] = [row for row in session.get("monthly_data", []) if row.get("semester") != semester] + result["monthly_data"]
             session["event_data"] = [row for row in session.get("event_data", []) if row.get("semester") != semester] + result["event_data"]
             session.setdefault("loaded_semesters", set()).add(semester)
+            if result.get("platform_cookies"):
+                session["platform_cookies"] = result["platform_cookies"]
             session.update({"employee_id": result["employee_id"], "employee_name": result["employee_name"], "syncing": False, "sync_percent": 100, "sync_message": f"{semester_text(semester)}更新完成", "sync_result": {key: result[key] for key in ("employee_id", "employee_name", "semesters", "items", "monthly_rows", "schedule_events")}})
         except Exception as exc:
             LOG.exception("semester platform sync failed")
@@ -1352,6 +1355,7 @@ class Handler(SimpleHTTPRequestHandler):
             return None
         if session["expires"] < time.time():
             session["platform_password"] = ""
+            session["platform_cookies"] = []
             SESSIONS.pop(token, None)
             return None
         session["expires"] = time.time() + SESSION_TTL
@@ -1419,7 +1423,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/logout" and self.command == "POST":
             if getattr(self, "session_token", None):
                 old = SESSIONS.pop(self.session_token, None)
-                if old: old["platform_password"] = ""
+                if old:
+                    old["platform_password"] = ""
+                    old["platform_cookies"] = []
             return self.send_json({}, headers={"Set-Cookie": session_cookie("", 0)})
         if path.startswith("/api/") and not user:
             raise AppError("请先使用青果账号登录", "AUTH_REQUIRED", 401)

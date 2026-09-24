@@ -40,6 +40,22 @@ class CalculationTests(unittest.TestCase):
             ("Edge", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
         ])
 
+    def test_qingguo_session_cookie_is_restored_without_second_login(self):
+        class Driver:
+            current_url = ""
+            cookies = []
+
+            def get(self, url):
+                self.current_url = url if not self.cookies else platform_sync.BASE + "/frame/homes.action"
+
+            def add_cookie(self, cookie):
+                self.cookies.append(cookie)
+
+        driver = Driver()
+        restored = platform_sync.restore_session(driver, [{"name": "JSESSIONID", "value": "secret", "unexpected": "drop"}])
+        self.assertTrue(restored)
+        self.assertEqual(driver.cookies, [{"name": "JSESSIONID", "value": "secret"}])
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))
