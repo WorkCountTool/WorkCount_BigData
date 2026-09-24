@@ -390,6 +390,18 @@ def restore_session(driver, cookies):
         return False
 
 
+def session_cookies(driver):
+    """Capture cookies across every Qingguo path, including CAS-only cookies."""
+    try:
+        cookies = driver.execute_cdp_cmd("Network.getAllCookies", {}).get("cookies", [])
+    except Exception:
+        cookies = driver.get_cookies()
+    return [
+        cookie for cookie in cookies
+        if str(cookie.get("domain") or "").lstrip(".").lower().endswith("qgjw.suet.edu.cn")
+    ]
+
+
 def semester_options(driver, timeout=12):
     """Wait until the asynchronously populated semester selector has real values."""
     def read_options(current):
@@ -468,7 +480,7 @@ def main():
         available_options=open_schedule_page(driver)
         if mode == "catalog":
             progress(95,f"已读取 {len(available_options)} 个可用学期")
-            print(json.dumps({"employee_id":employee_id,"employee_name":employee_name or employee_id,"college":"","semesters":[semester_key(*map(int,value.split(","))) for value,_ in available_options],"cookies":driver.get_cookies()},ensure_ascii=False))
+            print(json.dumps({"employee_id":employee_id,"employee_name":employee_name or employee_id,"college":"","semesters":[semester_key(*map(int,value.split(","))) for value,_ in available_options],"cookies":session_cookies(driver)},ensure_ascii=False))
             return
         semester_options=available_options
         if requested_semester:
@@ -543,7 +555,7 @@ def main():
                 monthly_rows.append({"semester":semester,"employee_id":employee_id,"employee_name":employee_name,"college":college,"department":"大数据教研室","month_key":key,"theory_hours":theory,"practice_hours":practice})
             extend_unique_practice(items,parse_note_items(notes,semester,employee_id,employee_name))
         progress(98,"正在整理工作量和个人学时数据")
-        print(json.dumps({"employee_id":employee_id,"employee_name":employee_name,"college":college,"items":items,"monthly_hours":monthly_rows,"schedule_events":schedule_events,"semesters":[semester_key(*x) for x in schedules],"cookies":driver.get_cookies()},ensure_ascii=False))
+        print(json.dumps({"employee_id":employee_id,"employee_name":employee_name,"college":college,"items":items,"monthly_hours":monthly_rows,"schedule_events":schedule_events,"semesters":[semester_key(*x) for x in schedules],"cookies":session_cookies(driver)},ensure_ascii=False))
     finally:
         password=""; driver.quit()
 

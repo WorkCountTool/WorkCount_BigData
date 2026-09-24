@@ -56,6 +56,21 @@ class CalculationTests(unittest.TestCase):
         self.assertTrue(restored)
         self.assertEqual(driver.cookies, [{"name": "JSESSIONID", "value": "secret"}])
 
+    def test_qingguo_session_captures_cas_path_cookie(self):
+        class Driver:
+            def execute_cdp_cmd(self, command, params):
+                self.command = (command, params)
+                return {"cookies": [
+                    {"name": "CASTGC", "value": "ticket", "domain": "qgjw.suet.edu.cn", "path": "/cas"},
+                    {"name": "other", "value": "drop", "domain": "example.com", "path": "/"},
+                ]}
+
+        driver = Driver()
+        self.assertEqual(platform_sync.session_cookies(driver), [
+            {"name": "CASTGC", "value": "ticket", "domain": "qgjw.suet.edu.cn", "path": "/cas"},
+        ])
+        self.assertEqual(driver.command, ("Network.getAllCookies", {}))
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))
