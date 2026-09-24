@@ -11,16 +11,18 @@ import time
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 from html.parser import HTMLParser
+from pathlib import Path
 
 try:
     from selenium import webdriver
-    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
     from selenium.webdriver.common.by import By
+    from selenium.webdriver.edge.options import Options as EdgeOptions
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.support.ui import Select
     from selenium.webdriver.support.ui import WebDriverWait
 except ModuleNotFoundError:  # Parsing and workbook tests do not need a browser.
-    webdriver = Options = By = EC = Select = WebDriverWait = None
+    webdriver = ChromeOptions = EdgeOptions = By = EC = Select = WebDriverWait = None
 
 
 BASE = "https://qgjw.suet.edu.cn"
@@ -36,8 +38,71 @@ def configure_stdio():
 
 def chrome_start_error(exc):
     detail=re.sub(r"\s+"," ",str(exc)).strip()
-    hint="无法启动 Chrome 登录组件。请确认已安装 Google Chrome；首次运行还需联网获取与 Chrome 匹配的驱动"
+    hint="无法启动浏览器登录组件。请确认已安装最新版 Chrome 或 Edge；首次运行还需联网获取匹配的驱动"
     return RuntimeError(f"{hint}。{detail[:400]}" if detail else hint)
+
+
+def windows_browser_candidates(environ=None, isfile=os.path.isfile):
+    """Return installed Chromium browsers in preferred order without touching the registry."""
+    environ = environ or os.environ
+    locations = (
+        ("Chrome", "PROGRAMFILES", "Google/Chrome/Application/chrome.exe"),
+        ("Chrome", "PROGRAMFILES(X86)", "Google/Chrome/Application/chrome.exe"),
+        ("Chrome", "LOCALAPPDATA", "Google/Chrome/Application/chrome.exe"),
+        ("Edge", "PROGRAMFILES(X86)", "Microsoft/Edge/Application/msedge.exe"),
+        ("Edge", "PROGRAMFILES", "Microsoft/Edge/Application/msedge.exe"),
+        ("Edge", "LOCALAPPDATA", "Microsoft/Edge/Application/msedge.exe"),
+    )
+    found = []
+    for browser, variable, relative in locations:
+        base = environ.get(variable, "")
+        path = str(Path(base) / Path(relative)) if base else ""
+        if path and isfile(path) and (browser, path) not in found:
+            found.append((browser, path))
+    return found
+
+
+def browser_options(options_class, binary=""):
+    options = options_class()
+    if binary:
+        options.binary_location = binary
+    options.page_load_strategy = "eager"
+    options.add_experimental_option("prefs", {"profile.managed_default_content_settings.images": 2})
+    for arg in ("--headless=new", "--ignore-certificate-errors", "--window-size=1440,1000", "--disable-gpu", "--no-sandbox"):
+        options.add_argument(arg)
+    return options
+
+
+def start_browser(progress_callback=None):
+    """Start an installed browser, falling back to Edge on Windows."""
+    configured = os.getenv("WORKCOUNT_CHROME_BINARY", "")
+    candidates = []
+    if configured and os.path.isfile(configured):
+        candidates.append(("Chrome", configured))
+    elif os.name == "nt":
+        candidates.extend(windows_browser_candidates())
+    else:
+        default_mac = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        candidates.append(("Chrome", default_mac if os.path.isfile(default_mac) else ""))
+    if not candidates:
+        candidates = [("Chrome", ""), ("Edge", "")] if os.name == "nt" else [("Chrome", "")]
+
+    errors = []
+    for browser, binary in candidates:
+        if progress_callback:
+            progress_callback(8, f"正在启动 {browser} 登录组件")
+        try:
+            if browser == "Edge":
+                driver = webdriver.Edge(options=browser_options(EdgeOptions, binary))
+            else:
+                driver = webdriver.Chrome(options=browser_options(ChromeOptions, binary))
+            driver.set_page_load_timeout(30)
+            driver.set_script_timeout(30)
+            return driver
+        except Exception as exc:
+            detail = re.sub(r"\s+", " ", str(exc)).strip()[:240]
+            errors.append(f"{browser}: {detail}")
+    raise chrome_start_error(RuntimeError("；".join(errors)))
 
 # Teaching week 1 is shared by every teacher. Keep confirmed school-calendar
 # dates here instead of guessing from the first Monday in March/September.
@@ -351,22 +416,16 @@ def main():
     configure_stdio()
     if webdriver is None:
         raise RuntimeError("缺少 Selenium，无法启动青果平台读取组件")
+    # Keep Selenium Manager from making a failed driver lookup look like a hung login.
+    os.environ.setdefault("SE_TIMEOUT", "20")
+    os.environ.setdefault("SE_AVOID_STATS", "true")
     request=json.loads(sys.stdin.readline()); username=str(request.get("username","")).strip(); password=str(request.get("password", ""))
     mode=str(request.get("mode") or "sync")
     requested_semester=str(request.get("semester") or "").strip()
     employee_id=str(request.get("employee_id") or username).strip(); employee_name=str(request.get("employee_name","")).strip()
     if not username or not password: raise RuntimeError("平台账号和密码不能为空")
-    options=Options()
-    chrome_binary=os.getenv("WORKCOUNT_CHROME_BINARY", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-    if os.path.isfile(chrome_binary): options.binary_location=chrome_binary
-    options.page_load_strategy="eager"
-    options.add_experimental_option("prefs",{"profile.managed_default_content_settings.images":2})
-    for arg in ("--headless=new","--ignore-certificate-errors","--window-size=1440,1000","--disable-gpu","--no-sandbox"): options.add_argument(arg)
     if mode == "catalog": progress(5,"正在启动青果登录组件")
-    try:
-        driver=webdriver.Chrome(options=options)
-    except Exception as exc:
-        raise chrome_start_error(exc) from exc
+    driver=start_browser(progress if mode == "catalog" else None)
     items=[]; monthly_rows=[]; schedule_events=[]
     try:
         if mode == "catalog": progress(20,"正在验证青果账号")

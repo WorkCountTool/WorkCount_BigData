@@ -28,6 +28,18 @@ class CalculationTests(unittest.TestCase):
         with self.assertRaisesRegex(app.AppError, "chromedriver failed"):
             app.connector_result("", "chromedriver failed", 1, "平台登录组件未能正常启动")
 
+    def test_windows_browser_candidates_prefer_chrome_and_fall_back_to_edge(self):
+        environment = {"PROGRAMFILES": "C:/Program Files", "PROGRAMFILES(X86)": "C:/Program Files (x86)"}
+        existing = {
+            "C:/Program Files/Google/Chrome/Application/chrome.exe",
+            "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+        }
+        candidates = platform_sync.windows_browser_candidates(environment, existing.__contains__)
+        self.assertEqual(candidates, [
+            ("Chrome", "C:/Program Files/Google/Chrome/Application/chrome.exe"),
+            ("Edge", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
+        ])
+
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):
             self.assertIn("; Secure", app.session_cookie("token", 60))

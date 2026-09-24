@@ -17,7 +17,7 @@ python3 app.py
 
 macOS Apple Silicon 的压缩包在 `release/WorkCount-macOS-arm64.zip`，解压整个文件夹后双击“启动工作量系统.command”。Windows x64 的完整包生成后解压并双击“启动工作量系统.bat”。在 macOS Intel 上应使用 `WorkCount-macOS-x86_64.zip`，不要混用 CPU 架构。
 
-每台电脑须事先安装 Google Chrome，首次运行青果连接器可能需要访问网络获取匹配的浏览器驱动；还须能直接访问青果平台。启动入口仅监听本机的 `127.0.0.1:8765`，关闭服务窗口即停止服务。详见包内的“离线使用说明.txt”。
+每台电脑须事先安装最新版 Google Chrome 或 Microsoft Edge，首次运行青果连接器可能需要访问网络获取匹配的浏览器驱动；还须能直接访问青果平台。Windows 会优先使用 Chrome，启动失败时自动回退到 Edge。启动入口仅监听本机的 `127.0.0.1:8765`，关闭服务窗口即停止服务。详见包内的“离线使用说明.txt”。
 
 本机重建 Apple Silicon 包：`bash tools/build_mac.sh`。Windows 和 Intel Mac 二进制由 `.github/workflows/build-portable.yml` 手动构建；工作流产物不含私有 Excel 模板，不是完整可用包。Windows 下载后运行 `python3 tools/assemble_ci_package.py 不含模板的ZIP Windows-x64`；Intel Mac 下载到 `release/ci-artifacts/macos-intel/` 后运行 `bash tools/assemble_mac_intel.sh`。完整包会在本机加入三个原模板，切勿公开发布。
 

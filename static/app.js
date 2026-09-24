@@ -167,6 +167,7 @@ async function login(event) {
       result = await api(`/api/login-status?job=${encodeURIComponent(started.job_id)}`);
       if (result.status === 'done') break;
       loginPolls += 1;
+      if (loginPolls > 125) throw new Error('登录等待超时，请确认 Windows 已安装最新版 Chrome 或 Edge，并能访问青果平台');
       showLoginProgress(result.percent, result.message);
       status.textContent = `${result.message || '正在验证青果账号'} · 已等待 ${result.elapsed} 秒`;
     }

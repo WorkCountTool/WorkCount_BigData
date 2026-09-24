@@ -42,6 +42,7 @@ SESSIONS: dict[str, dict] = {}
 LOGIN_JOBS: dict[str, dict] = {}
 LOGIN_LOCK = threading.Lock()
 LOGIN_JOB_TTL = 10 * 60
+LOGIN_TIMEOUT = 105
 REQUIRED_TEMPLATES = (
     "个人学时统计表模板.xlsx",
     "决算工作量表模板.xlsx",
@@ -513,13 +514,14 @@ def platform_catalog(payload: dict, progress_callback=None) -> dict:
                         update=json.loads(line[9:]); progress_callback(int(update.get("percent",0)),str(update.get("message","正在登录青果")))
                     except (ValueError,TypeError,json.JSONDecodeError): pass
         stdout_thread=threading.Thread(target=read_stdout,daemon=True); stderr_thread=threading.Thread(target=read_stderr,daemon=True)
-        stdout_thread.start(); stderr_thread.start(); proc.wait(timeout=90)
+        stdout_thread.start(); stderr_thread.start(); proc.wait(timeout=LOGIN_TIMEOUT)
         stdout_thread.join(timeout=2); stderr_thread.join(timeout=2)
         stdout="".join(stdout_lines); stderr="\n".join(stderr_lines)
         proc.stdout.close(); proc.stderr.close()
     except subprocess.TimeoutExpired as exc:
         proc.kill()
-        raise AppError("平台登录响应超时，请稍后重试", "PLATFORM_TIMEOUT", 504) from exc
+        proc.wait(timeout=5)
+        raise AppError("平台登录组件超时。请确认 Windows 已安装最新版 Chrome 或 Edge，并能访问青果平台", "PLATFORM_TIMEOUT", 504) from exc
     finally:
         password=""; request=""
     result = connector_result(stdout, stderr, proc.returncode, "平台登录组件未能正常启动")
@@ -1392,6 +1394,10 @@ class Handler(SimpleHTTPRequestHandler):
             if not job:
                 raise AppError("登录任务不存在或已过期，请重新登录", "LOGIN_JOB_NOT_FOUND", 404)
             if job["status"] == "running":
+                if time.time() - job["created"] > LOGIN_TIMEOUT + 10:
+                    with LOGIN_LOCK:
+                        LOGIN_JOBS.pop(job_id, None)
+                    raise AppError("平台登录已超时，请检查 Chrome/Edge 和网络后重试", "PLATFORM_TIMEOUT", 504)
                 return self.send_json({"status": "running", "elapsed": int(time.time() - job["created"]), "percent": int(job.get("percent", 2)), "message": job.get("message", "正在验证青果账号")})
             with LOGIN_LOCK:
                 LOGIN_JOBS.pop(job_id, None)
