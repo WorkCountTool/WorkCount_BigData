@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add private workbook templates to the Windows CI-built archive."""
+"""Add private workbook templates to a CI-built portable archive."""
 
 import argparse
 import zipfile
@@ -25,7 +25,7 @@ def assemble(source: Path, platform: str) -> Path:
         entries = package.infolist()
         if not entries or any(not entry.filename.startswith(root + "/") or ".." in Path(entry.filename).parts for entry in entries):
             raise ValueError("构建压缩包的根目录不符")
-        expected = "WorkCountServer/WorkCountServer.exe"
+        expected = "WorkCountServer/WorkCountServer.exe" if platform == "Windows-x64" else "WorkCountServer/WorkCountServer"
         if root + "/" + expected not in package.namelist():
             raise ValueError("构建压缩包缺少主程序")
         with zipfile.ZipFile(destination, "w") as output:
@@ -39,6 +39,6 @@ def assemble(source: Path, platform: str) -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", type=Path, help="GitHub Actions 下载的不含模板 ZIP")
-    parser.add_argument("platform", choices=("Windows-x64",))
+    parser.add_argument("platform", choices=("Windows-x64", "macOS-x86_64"))
     args = parser.parse_args()
     print(assemble(args.archive, args.platform))
