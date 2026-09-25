@@ -9,7 +9,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 TEMPLATES = (
     "个人学时统计表模板.xlsx",
     "决算工作量表模板.xlsx",
-    "张子豪-表1：人工智能学院（部）2026-2027学年第一学期工作量预算汇总表.xlsx",
+    "预算工作量表模板.xlsx",
 )
 
 

@@ -46,7 +46,7 @@ LOGIN_TIMEOUT = 150
 REQUIRED_TEMPLATES = (
     "个人学时统计表模板.xlsx",
     "决算工作量表模板.xlsx",
-    "张子豪-表1：人工智能学院（部）2026-2027学年第一学期工作量预算汇总表.xlsx",
+    "预算工作量表模板.xlsx",
 )
 
 
@@ -942,10 +942,15 @@ def exact_personal_hours_xlsx(employee_id: str, employee_name: str, semester: st
         ws = workbook[old_name]
         if ws.title != month:
             ws.title = month
-        for row in ws.iter_rows():
-            for cell_obj in row:
-                if isinstance(cell_obj.value, str):
-                    cell_obj.value = cell_obj.value.replace(old_name, month)
+        # The supplied template contains fixed spring-holiday notes. They are
+        # not Qingguo data and become actively misleading in a fall export.
+        # Keep one provenance note and remove every hard-coded calendar note.
+        for row_number in range(21, min(ws.max_row, 25) + 1):
+            for column in range(1, ws.max_column + 1):
+                cell_obj = ws.cell(row_number, column)
+                if cell_obj.__class__.__name__ != "MergedCell":
+                    cell_obj.value = None
+        ws["A21"] = "备注：课程、周次和上课日期均依据青果教学安排生成。"
         for row_number in list(range(5, 11)) + list(range(14, 21)):
             for column in range(1, ws.max_column + 1):
                 cell_obj = ws.cell(row_number, column)
@@ -1198,7 +1203,7 @@ def exact_budget_xlsx(items: list[dict], events: list[dict], employee_id: str, e
     from openpyxl import load_workbook
     from openpyxl.utils import column_index_from_string
 
-    template = TEMPLATES / "张子豪-表1：人工智能学院（部）2026-2027学年第一学期工作量预算汇总表.xlsx"
+    template = TEMPLATES / "预算工作量表模板.xlsx"
     workbook = load_workbook(template)
     theory = [item for item in items if item["kind"] == "theory"]
     practice = [item for item in items if item["kind"] != "theory"]

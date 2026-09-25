@@ -169,6 +169,12 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(thesis["practice_hours"], 36)
         self.assertEqual(internship["display_hours"], 150)
 
+    def test_course_experiment_workload_stays_in_theory_course_total(self):
+        item = app.calculate({"kind":"theory", "course":"课程A", "student_count":50, "total_hours":32, "experiment_hours":16, "experiment_students":50, "category_coeff":1, "repeat_coeff":1, "course_coeff":1, "online_coeff":1})
+        self.assertEqual(item["workload"], 32)
+        self.assertEqual(item["theory_workload"], 32)
+        self.assertEqual(item["practice_workload"], 0)
+
     def test_formula_export_is_auditable(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(app, "DB_PATH", Path(tmp) / "test.db"):
             app.init_db(seed_demo=True)
@@ -211,6 +217,27 @@ class CalculationTests(unittest.TestCase):
         self.assertEqual(sheet["AF3"].value, "第十七周、第十八周")
         self.assertEqual(sheet["AA3"].value, sheet["AA12"].value)
         self.assertEqual(sheet["AF3"].value, sheet["AF12"].value)
+
+    def test_fall_personal_hours_removes_template_holiday_notes(self):
+        from openpyxl import load_workbook
+
+        months = [
+            {"semester":"2024-2025-1", "employee_id":"1", "employee_name":"教师", "college":"人工智能学院", "department":"大数据教研室", "month_key":month, "theory_hours":0, "practice_hours":0}
+            for month in ("9月", "10月", "11月", "12-1月")
+        ]
+        events = [{"semester":"2024-2025-1", "employee_id":"1", "employee_name":"教师", "event_date":"2024-10-08", "academic_week":6, "weekday":2, "course":"课程A", "class_name":"班级A", "student_count":50, "periods":"1-2", "hours":2, "category":"practice", "source":"平台:教学安排"}]
+        raw = app.exact_personal_hours_xlsx("1", "教师", "2024-2025-1", months, events)
+        workbook = load_workbook(io.BytesIO(raw), data_only=False)
+        for sheet in workbook.worksheets[1:]:
+            text = "\n".join(str(cell.value or "") for row in sheet.iter_rows() for cell in row)
+            self.assertNotIn("清明节", text)
+            self.assertNotIn("劳动节", text)
+            self.assertNotIn("端午节", text)
+            self.assertEqual(sheet["A21"].value, "备注：课程、周次和上课日期均依据青果教学安排生成。")
+
+    def test_qingguo_no_practice_record_does_not_invent_workload(self):
+        html = "<html><body><div>山东工程职业技术大学教师指导实践环节</div><div>没有检索到记录!</div></body></html>"
+        self.assertEqual(platform_sync.parse_practice(html, "2024-2025-1", "1", "教师"), [])
 
     def test_decision_export_expands_practice_rows_without_truncation(self):
         from openpyxl import load_workbook

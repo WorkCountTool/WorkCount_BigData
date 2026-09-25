@@ -16,6 +16,7 @@ mkdir -p "$PYINSTALLER_CONFIG_DIR"
   --specpath "$build_root/spec" tools/platform_sync.py
 
 mkdir -p "$output_root/templates"
+rm -f "$output_root/templates/张子豪-表1：人工智能学院（部）2026-2027学年第一学期工作量预算汇总表.xlsx"
 cp -R "$build_root/dist/WorkCountServer" "$output_root/"
 cp -R "$build_root/dist/PlatformConnector" "$output_root/"
 cp -R static "$output_root/"
