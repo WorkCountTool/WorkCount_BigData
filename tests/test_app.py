@@ -83,6 +83,7 @@ class CalculationTests(unittest.TestCase):
 
             def get(self, url): self.current_url = url
             def find_element(self, by, value): return Element()
+            def execute_script(self, script): return None
 
         class Wait:
             def __init__(self, driver, timeout): self.driver = driver
@@ -108,12 +109,19 @@ class CalculationTests(unittest.TestCase):
 
         class Driver:
             current_url = platform_sync.BASE + "/cas/login.action"
+            login_result = None
 
             def get(self, url):
-                self.current_url = url
+                if url.endswith("/frame/homes.action"):
+                    self.current_url = url
+                else:
+                    self.current_url = platform_sync.BASE + "/cas/login.action"
 
             def find_element(self, by, value):
                 return Element()
+
+            def execute_script(self, script):
+                return self.login_result
 
         class Wait:
             calls = 0
@@ -135,6 +143,45 @@ class CalculationTests(unittest.TestCase):
         with patch.object(platform_sync, "WebDriverWait", Wait), patch.object(platform_sync, "EC", Conditions), patch.object(platform_sync, "By", Locator):
             platform_sync.login(Driver(), "user", "password")
         self.assertEqual(Wait.calls, 3)
+
+    def test_login_retries_once_after_ajax_network_error(self):
+        class Element:
+            text = "正在登录......"
+            def click(self): pass
+            def send_keys(self, value): pass
+
+        class Driver:
+            current_url = platform_sync.BASE + "/cas/login.action"
+            attempts = 0
+            def get(self, url):
+                self.current_url = url
+                if url.endswith("/cas/login.action"):
+                    self.attempts += 1
+            def find_element(self, by, value): return Element()
+            def execute_script(self, script):
+                if script.startswith("return"):
+                    return {"state": "network_error"} if self.attempts == 1 else {"state": "response", "data": {"status": "200"}}
+
+        class Wait:
+            def __init__(self, driver, timeout): self.driver = driver; self.timeout = timeout
+            def until(self, predicate):
+                if self.timeout == platform_sync.SESSION_PROBE_TIMEOUT:
+                    self.driver.current_url = platform_sync.BASE + "/cas/login.action"
+                    return False
+                result = predicate(self.driver)
+                if self.timeout == platform_sync.LOGIN_RESPONSE_TIMEOUT and self.driver.attempts == 2:
+                    self.driver.current_url = platform_sync.BASE + "/frame/homes.action"
+                return result
+
+        class Conditions:
+            @staticmethod
+            def presence_of_element_located(locator): return lambda driver: True
+
+        class Locator:
+            ID = "id"
+
+        with patch.object(platform_sync, "WebDriverWait", Wait), patch.object(platform_sync, "EC", Conditions), patch.object(platform_sync, "By", Locator):
+            platform_sync.login(Driver(), "user", "password")
 
     def test_production_cookie_requires_https(self):
         with patch.object(app, "SECURE_COOKIES", True):

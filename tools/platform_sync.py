@@ -31,8 +31,9 @@ except ModuleNotFoundError:  # Parsing and workbook tests do not need a browser.
 
 BASE = "https://qgjw.suet.edu.cn"
 LOGIN_FORM_TIMEOUT = 25
-LOGIN_RESPONSE_TIMEOUT = 45
+LOGIN_RESPONSE_TIMEOUT = 35
 SESSION_PROBE_TIMEOUT = 15
+LOGIN_ATTEMPTS = 2
 
 
 def configure_stdio():
@@ -360,15 +361,83 @@ def parse_note_items(notes, semester, employee_id, employee_name):
     return items
 
 
+def install_login_observer(driver):
+    """Bound Qingguo's otherwise unbounded AJAX call and retain its result."""
+    driver.execute_script("""
+        window.__workcountLogin = {state: "pending"};
+        if (!window.jQuery || jQuery.ajax.__workcountWrapped) return;
+        const originalAjax = jQuery.ajax;
+        const wrappedAjax = function(settings) {
+            if (!settings || String(settings.url || "").indexOf("cas/logon.action") < 0) {
+                return originalAjax.apply(this, arguments);
+            }
+            const originalSuccess = settings.success;
+            const originalError = settings.error;
+            const observed = jQuery.extend({}, settings, {
+                timeout: 30000,
+                success: function(response) {
+                    let data = null;
+                    try { data = JSON.parse(response); } catch (ignored) {}
+                    window.__workcountLogin = {state: "response", data: data};
+                    if (originalSuccess) return originalSuccess.apply(this, arguments);
+                },
+                error: function(xhr, textStatus) {
+                    window.__workcountLogin = {
+                        state: "network_error",
+                        httpStatus: xhr && xhr.status || 0,
+                        reason: textStatus || "error"
+                    };
+                    if (originalError) return originalError.apply(this, arguments);
+                }
+            });
+            return originalAjax.call(this, observed);
+        };
+        wrappedAjax.__workcountWrapped = true;
+        jQuery.ajax = wrappedAjax;
+    """)
+
+
+def login_result(driver):
+    try:
+        return driver.execute_script("return window.__workcountLogin || null") or {}
+    except Exception:
+        return {}
+
+
+def probe_authenticated_session(driver):
+    """Check whether CAS accepted the login even if its JavaScript stalled."""
+    try:
+        driver.get(BASE+"/frame/homes.action")
+        return bool(WebDriverWait(driver,SESSION_PROBE_TIMEOUT).until(
+            lambda current: "/cas/" not in current.current_url
+        ))
+    except Exception:
+        return False
+
+
 def login(driver, username, password):
+    last_failure = ""
+    for attempt in range(LOGIN_ATTEMPTS):
+        if _login_once(driver, username, password):
+            return
+        if probe_authenticated_session(driver):
+            return
+        last_failure = "青果登录请求超时或网络中断"
+    raise RuntimeError(f"{last_failure}（已自动重试），请稍后再试")
+
+
+def _login_once(driver, username, password):
     driver.get(BASE+"/cas/login.action")
     wait=WebDriverWait(driver,LOGIN_FORM_TIMEOUT)
     wait.until(EC.presence_of_element_located((By.ID,"username")))
+    install_login_observer(driver)
     driver.find_element(By.ID,"username1").click(); driver.find_element(By.ID,"username").send_keys(username)
     driver.find_element(By.ID,"password1").click(); driver.find_element(By.ID,"password").send_keys(password)
     driver.find_element(By.ID,"login").click()
     def finished(current):
         if "/cas/" not in current.current_url:
+            return True
+        if login_result(current).get("state") in ("response", "network_error"):
             return True
         try:
             message = re.sub(r"\s+", " ", current.find_element(By.ID, "msg").text).strip()
@@ -377,20 +446,17 @@ def login(driver, username, password):
             return False
     try:
         WebDriverWait(driver,LOGIN_RESPONSE_TIMEOUT).until(finished)
-    except TimeoutException as exc:
-        # Qingguo submits credentials with an asynchronous request. On a slow
-        # response the session can be established before its JavaScript redirect.
-        # Probe the protected home page once before reporting a timeout.
-        try:
-            driver.get(BASE+"/frame/homes.action")
-            authenticated=WebDriverWait(driver,SESSION_PROBE_TIMEOUT).until(
-                lambda current: "/cas/" not in current.current_url
-            )
-            if authenticated:
-                return
-        except Exception:
-            pass
-        raise RuntimeError("青果登录响应超时，请稍后重试") from exc
+    except TimeoutException:
+        return False
+    result = login_result(driver)
+    if result.get("state") == "network_error":
+        return False
+    data = result.get("data") if result.get("state") == "response" else None
+    if isinstance(data, dict):
+        if str(data.get("status")) == "200":
+            return "/cas/" not in driver.current_url
+        message = re.sub(r"\s+", " ", str(data.get("message") or "")).strip().split("|", 1)[0]
+        raise RuntimeError(f"青果平台提示：{message}" if message else "青果平台未接受本次登录，请核对账号和密码")
     if "/cas/" in driver.current_url:
         message = ""
         try:
@@ -398,6 +464,7 @@ def login(driver, username, password):
         except Exception:
             pass
         raise RuntimeError(f"青果平台提示：{message}" if message else "青果平台未接受本次登录，请核对账号和密码")
+    return True
 
 
 def restore_session(driver, cookies):
